@@ -1,15 +1,14 @@
 <!-- video-player.html (webview 안에서 로드되는 로컬 HTML) -->
 <!doctype html>
 <html>
-    <body style="margin: 0; background: #000;">
+    <body style="margin: 0; background: #000">
         <video id="player" controls width="100%"></video>
-
-        <p id="status" style="color: white; font-size: 12px;">video-player.html loaded</p>
 
         <script>
             window.addEventListener("message", (event) => {
                 document.getElementById("status").textContent = "message received: " + JSON.stringify(event.data);
                 const { type, src } = event.data || {};
+                console.log("Received message in video player:", event.data);
                 if (type === "loadVideo" && src) {
                     const video = document.getElementById("player");
                     video.src = src;

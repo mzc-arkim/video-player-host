@@ -5,16 +5,15 @@
         <video id="player" controls width="100%"></video>
 
         <script>
-            window.addEventListener("message", (event) => {
-                document.getElementById("status").textContent = "message received: " + JSON.stringify(event.data);
-                const { type, src } = event.data || {};
-                console.log("Received message in video player:", event.data);
-                if (type === "loadVideo" && src) {
-                    const video = document.getElementById("player");
-                    video.src = src;
-                    video.load();
-                }
-            });
+            const params = new URLSearchParams(window.location.search);
+            const src = params.get("src");
+            console.log("Video player loaded with src:", src);
+
+            if (src) {
+                const video = document.getElementById("player");
+                video.src = src;
+                video.load();
+            }
         </script>
     </body>
 </html>

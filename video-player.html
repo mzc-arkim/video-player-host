@@ -16,9 +16,9 @@
             "
         ></p>
         <script>
-            const raw = window.location.hash;
-            const src = decodeURIComponent(raw.substring(1));
-            document.getElementById("debug").textContent = "hash: " + raw.substring(0, 100);
+            const hash = window.location.hash.substring(1);
+            const b64 = hash.replace(/-/g, "+").replace(/_/g, "/");
+            const src = atob(b64);
 
             if (src) {
                 const video = document.getElementById("player");

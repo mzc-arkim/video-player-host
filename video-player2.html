@@ -1,6 +1,9 @@
 <!-- video-player.html (webview 안에서 로드되는 로컬 HTML) -->
 <!doctype html>
 <html>
+    <head>
+        <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    </head>
     <body style="margin: 0; background: #000">
         <video id="player" controls width="100%" height="210px"></video>
         <p
@@ -66,51 +69,48 @@
                         log("video loadedmetadata: " + video.videoWidth + "x" + video.videoHeight + " duration=" + video.duration);
                     });
 
-                    var fetchHeaders = {};
-                    if (!s3 && authorization) {
-                        fetchHeaders["Authorization"] = "Bearer " + authorization;
-                        if (projectId) fetchHeaders["projectId"] = projectId;
-                    }
+                    if (s3) {
+                        // S3 pre-signed URL: 직접 재생
+                        log("mode: S3 direct playback");
+                        fetch(src)
+                            .then(function (res) {
+                                log("fetch status: " + res.status);
+                                if (!res.ok) throw new Error("HTTP " + res.status);
+                                return res.blob();
+                            })
+                            .then(function (blob) {
+                                log("blob size: " + blob.size + " type: " + blob.type);
+                                video.src = URL.createObjectURL(blob);
+                                video.load();
+                            })
+                            .catch(function (err) {
+                                log("S3 fetch error: " + err.message);
+                            });
+                    } else if (authorization) {
+                        // CDN URL: dash.js + auth 헤더로 DASH 스트리밍 재생
+                        log("mode: DASH streaming with auth");
+                        var dashPlayer = dashjs.MediaPlayer().create();
 
-                    log("fetch mode: " + (s3 ? "S3 (no auth)" : "CDN (auth)"));
-
-                    fetch(src, !s3 ? { headers: fetchHeaders } : {})
-                        .then(function (res) {
-                            log("fetch status: " + res.status + " " + res.statusText);
-                            var ct = res.headers.get("content-type") || "unknown";
-                            log("content-type: " + ct);
-                            log("content-length: " + (res.headers.get("content-length") || "unknown"));
-                            if (!res.ok) {
-                                return res.text().then(function (body) {
-                                    log("error body: " + body.substring(0, 300));
-                                    throw new Error("HTTP " + res.status);
-                                });
-                            }
-                            // CDN이 JSON 응답(메타데이터)을 반환하는 경우 내용 확인
-                            if (ct.indexOf("application/json") !== -1) {
-                                return res.text().then(function (text) {
-                                    log("json response: " + text.substring(0, 500));
-                                    return { __json: text };
-                                });
-                            }
-                            return res.blob();
-                        })
-                        .then(function (result) {
-                            if (!result) return;
-                            // JSON 응답인 경우: 영상 URL 추출 시도
-                            if (result.__json) {
-                                log("response is JSON, not video binary");
-                                return;
-                            }
-                            log("blob size: " + result.size + " type: " + result.type);
-                            var blobUrl = URL.createObjectURL(result);
-                            video.src = blobUrl;
-                            video.load();
-                            log("video loaded from blob");
-                        })
-                        .catch(function (err) {
-                            log("fetch error: " + err.message);
+                        dashPlayer.setRequestInterceptor(function (request) {
+                            request.headers["Authorization"] = "Bearer " + authorization;
+                            if (projectId) request.headers["projectId"] = projectId;
+                            return request;
                         });
+
+                        dashPlayer.initialize(video, src, false);
+
+                        dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function (e) {
+                            log("dash error: " + JSON.stringify(e.error || e).substring(0, 200));
+                        });
+                        dashPlayer.on(dashjs.MediaPlayer.events.PLAYBACK_METADATA_LOADED, function () {
+                            log("dash loaded: " + video.videoWidth + "x" + video.videoHeight);
+                        });
+                    } else {
+                        // 인증 없이 직접 재생
+                        log("mode: direct playback (no auth)");
+                        video.src = src;
+                        video.load();
+                    }
                 } else {
                     log("no src provided");
                 }

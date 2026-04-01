@@ -62,33 +62,45 @@
                         log("video error: code=" + e.code + " message=" + (e.message || "unknown"));
                     });
 
+                    video.addEventListener("loadedmetadata", function () {
+                        log("video loadedmetadata: " + video.videoWidth + "x" + video.videoHeight + " duration=" + video.duration);
+                    });
+
                     if (authorization && isUsingCDN(src)) {
-                        // CDN(비-S3) URL인 경우: 인증 헤더를 포함하여 fetch 후 blob URL로 재생
+                        // CDN(비-S3) URL: 인증 헤더를 포함하여 fetch 후 blob URL로 재생
                         var headers = {};
-                        if (authorization) headers["Authorization"] = "Bearer " + authorization;
+                        headers["Authorization"] = "Bearer " + authorization;
                         if (projectId) headers["projectId"] = projectId;
 
-                        log("fetching with auth headers...");
+                        log("fetch mode: CDN with auth headers...");
 
                         fetch(src, { headers: headers })
                             .then(function (res) {
                                 log("fetch status: " + res.status + " " + res.statusText);
                                 log("content-type: " + (res.headers.get("content-type") || "unknown"));
-                                if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText);
+                                log("content-length: " + (res.headers.get("content-length") || "unknown"));
+                                if (!res.ok) {
+                                    return res.text().then(function (body) {
+                                        log("error body: " + body.substring(0, 200));
+                                        throw new Error("HTTP " + res.status);
+                                    });
+                                }
                                 return res.blob();
                             })
                             .then(function (blob) {
-                                log("blob size: " + blob.size + " type: " + blob.type);
-                                video.src = URL.createObjectURL(blob);
-                                video.load();
-                                log("video loaded from blob");
+                                if (blob) {
+                                    log("blob size: " + blob.size + " type: " + blob.type);
+                                    video.src = URL.createObjectURL(blob);
+                                    video.load();
+                                    log("video loaded from blob");
+                                }
                             })
                             .catch(function (err) {
                                 log("fetch error: " + err.message);
                             });
                     } else {
-                        // S3 URL이거나 인증 정보가 없는 경우: 직접 재생 (pre-signed URL)
-                        log("direct playback (no auth headers)");
+                        // S3 pre-signed URL 또는 인증 불필요: 직접 재생
+                        log("direct playback: " + (isUsingCDN(src) ? "CDN no auth" : "S3 pre-signed"));
                         video.src = src;
                         video.load();
                     }

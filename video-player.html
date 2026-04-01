@@ -2,7 +2,7 @@
 <!doctype html>
 <html>
     <head>
-        <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+        <script src="https://cdn.dashjs.org/v4.7.4/dash.all.min.js"></script>
     </head>
     <body style="margin: 0; background: #000">
         <video id="player" controls width="100%" height="210px"></video>
@@ -89,36 +89,20 @@
                     } else if (authorization) {
                         // CDN URL: dash.js + auth 헤더로 DASH 스트리밍 재생
                         log("mode: DASH streaming with auth");
-                        var player = dashjs.MediaPlayer().create();
-                        player.updateSettings({
-                            streaming: {
-                                protection: {
-                                    ignoreEmeEncryptedEvent: true,
-                                },
-                            },
-                        });
-                        player.extend(
-                            "RequestModifier",
-                            function () {
-                                return {
-                                    modifyRequestHeader: function (xhr) {
-                                        xhr.setRequestHeader("Authorization", "Bearer " + authorization);
-                                        if (projectId) xhr.setRequestHeader("projectId", projectId);
-                                        return xhr;
-                                    },
-                                    modifyRequestURL: function (url) {
-                                        return url;
-                                    },
-                                };
-                            },
-                            true,
-                        );
-                        player.initialize(video, src, false);
+                        var dashPlayer = dashjs.MediaPlayer().create();
 
-                        player.on(dashjs.MediaPlayer.events.ERROR, function (e) {
+                        dashPlayer.setRequestInterceptor(function (request) {
+                            request.headers["Authorization"] = "Bearer " + authorization;
+                            if (projectId) request.headers["projectId"] = projectId;
+                            return request;
+                        });
+
+                        dashPlayer.initialize(video, src, false);
+
+                        dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function (e) {
                             log("dash error: " + JSON.stringify(e.error || e).substring(0, 200));
                         });
-                        player.on(dashjs.MediaPlayer.events.PLAYBACK_METADATA_LOADED, function () {
+                        dashPlayer.on(dashjs.MediaPlayer.events.PLAYBACK_METADATA_LOADED, function () {
                             log("dash loaded: " + video.videoWidth + "x" + video.videoHeight);
                         });
                     } else {

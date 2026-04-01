@@ -89,14 +89,28 @@
                     } else if (authorization) {
                         // CDN URL: dash.js + auth 헤더로 DASH 스트리밍 재생
                         log("mode: DASH streaming with auth");
+
+                        // XHR을 오버라이드하여 같은 도메인 요청에 auth 헤더 자동 주입
+                        var srcOrigin = new URL(src).origin;
+                        var OrigXHR = XMLHttpRequest;
+                        function AuthXHR() {
+                            var xhr = new OrigXHR();
+                            var origOpen = xhr.open;
+                            xhr.open = function () {
+                                origOpen.apply(xhr, arguments);
+                                var reqUrl = arguments[1] || "";
+                                try {
+                                    if (new URL(reqUrl).origin === srcOrigin) {
+                                        xhr.setRequestHeader("Authorization", "Bearer " + authorization);
+                                        if (projectId) xhr.setRequestHeader("projectId", projectId);
+                                    }
+                                } catch (_e) {}
+                            };
+                            return xhr;
+                        }
+                        window.XMLHttpRequest = AuthXHR;
+
                         var dashPlayer = dashjs.MediaPlayer().create();
-
-                        dashPlayer.setRequestInterceptor(function (request) {
-                            request.headers["Authorization"] = "Bearer " + authorization;
-                            if (projectId) request.headers["projectId"] = projectId;
-                            return request;
-                        });
-
                         dashPlayer.initialize(video, src, false);
 
                         dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function (e) {

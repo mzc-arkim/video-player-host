@@ -1,0 +1,104 @@
+<!-- video-player.html (webview 안에서 로드되는 로컬 HTML) -->
+<!doctype html>
+<html>
+    <head>
+        <script src="https://cdn.dashjs.org/v4.7.4/dash.all.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+    </head>
+    <body style="margin: 0; background: #000">
+        <video id="player" controls width="100%" height="210px" style="opacity: 0; transition: opacity 0.2s"></video>
+        <script>
+            try {
+                var hash = window.location.hash.substring(1);
+                var b64 = hash.replace(/-/g, "+").replace(/_/g, "/");
+                var decoded = atob(b64);
+                var params;
+                try {
+                    params = JSON.parse(decoded);
+                } catch (_e) {
+                    params = { src: decoded };
+                }
+
+                var src = params.src;
+                var authorization = params.authorization;
+                var projectId = params.projectId;
+                var mimeType = params.mimeType;
+
+                function isS3Direct(uri) {
+                    if (!uri) return false;
+                    return /\.s3[.-].*\.amazonaws\.com/.test(uri);
+                }
+
+                function getContentType(mime, uri) {
+                    if (mime) return mime;
+                    var ext = (uri.split("?")[0].split(".").pop() || "").toLowerCase();
+                    switch (ext) {
+                        case "m3u8":
+                            return "application/x-mpegURL";
+                        case "mpd":
+                            return "application/dash+xml";
+                        case "mp4":
+                            return "video/mp4";
+                        case "ts":
+                            return "video/MP2T";
+                        case "mp3":
+                            return "audio/mp3";
+                        default:
+                            return "";
+                    }
+                }
+
+                var s3 = isS3Direct(src);
+
+                if (src) {
+                    var video = document.getElementById("player");
+                    video.addEventListener("loadeddata", function () {
+                        video.style.opacity = "1";
+                    });
+
+                    var contentType = getContentType(mimeType, src);
+
+                    if (!s3 && authorization && contentType === "application/x-mpegURL") {
+                        // HLS(m3u8): hls.js + auth 헤더
+                        var hls = new Hls({
+                            xhrSetup: function (xhr, url) {
+                                xhr.setRequestHeader("Authorization", "Bearer " + authorization);
+                                if (projectId) xhr.setRequestHeader("projectId", projectId);
+                            },
+                        });
+                        hls.loadSource(src);
+                        hls.attachMedia(video);
+                    } else if (!s3 && authorization && contentType === "application/dash+xml") {
+                        // DASH(mpd): dash.js + auth 헤더 (XHR 오버라이드)
+                        var srcOrigin = new URL(src).origin;
+                        var OrigXHR = XMLHttpRequest;
+                        function AuthXHR() {
+                            var xhr = new OrigXHR();
+                            var origOpen = xhr.open;
+                            xhr.open = function () {
+                                origOpen.apply(xhr, arguments);
+                                var reqUrl = arguments[1] || "";
+                                try {
+                                    if (new URL(reqUrl).origin === srcOrigin) {
+                                        xhr.setRequestHeader("Authorization", "Bearer " + authorization);
+                                        if (projectId) xhr.setRequestHeader("projectId", projectId);
+                                    }
+                                } catch (_e) {}
+                            };
+                            return xhr;
+                        }
+                        window.XMLHttpRequest = AuthXHR;
+
+                        var dashPlayer = dashjs.MediaPlayer().create();
+                        dashPlayer.initialize(video, src, false);
+                    } else {
+                        // S3 pre-signed URL, mp4, mp3, ts 등: 직접 재생
+                        if (contentType) video.setAttribute("type", contentType);
+                        video.src = src;
+                        video.load();
+                    }
+                }
+            } catch (_e) {}
+        </script>
+    </body>
+</html>

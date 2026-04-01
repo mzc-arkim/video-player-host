@@ -46,13 +46,13 @@
                 log("authorization: " + (authorization ? "Bearer ***" + authorization.slice(-6) : "null"));
                 log("projectId: " + (projectId || "null"));
 
-                function isUsingCDN(uri) {
+                function isS3Direct(uri) {
                     if (!uri) return false;
-                    var regExp = new RegExp("(s3-|s3.)?(.*).amazonaws.com");
-                    return regExp.test(uri) === false;
+                    return /\.s3[.-].*\.amazonaws\.com/.test(uri);
                 }
 
-                log("isUsingCDN: " + isUsingCDN(src));
+                var s3 = isS3Direct(src);
+                log("isS3Direct: " + s3);
 
                 if (src) {
                     var video = document.getElementById("player");
@@ -66,37 +66,47 @@
                         log("video loadedmetadata: " + video.videoWidth + "x" + video.videoHeight + " duration=" + video.duration);
                     });
 
-                    var cdn = isUsingCDN(src);
                     var fetchHeaders = {};
-                    if (cdn && authorization) {
+                    if (!s3 && authorization) {
                         fetchHeaders["Authorization"] = "Bearer " + authorization;
                         if (projectId) fetchHeaders["projectId"] = projectId;
                     }
 
-                    log("fetch mode: " + (cdn ? "CDN (auth)" : "S3 (no auth)"));
+                    log("fetch mode: " + (s3 ? "S3 (no auth)" : "CDN (auth)"));
 
-                    fetch(src, cdn ? { headers: fetchHeaders } : {})
+                    fetch(src, !s3 ? { headers: fetchHeaders } : {})
                         .then(function (res) {
                             log("fetch status: " + res.status + " " + res.statusText);
-                            log("content-type: " + (res.headers.get("content-type") || "unknown"));
+                            var ct = res.headers.get("content-type") || "unknown";
+                            log("content-type: " + ct);
                             log("content-length: " + (res.headers.get("content-length") || "unknown"));
                             if (!res.ok) {
                                 return res.text().then(function (body) {
-                                    log("error body: " + body.substring(0, 200));
+                                    log("error body: " + body.substring(0, 300));
                                     throw new Error("HTTP " + res.status);
+                                });
+                            }
+                            // CDN이 JSON 응답(메타데이터)을 반환하는 경우 내용 확인
+                            if (ct.indexOf("application/json") !== -1) {
+                                return res.text().then(function (text) {
+                                    log("json response: " + text.substring(0, 500));
+                                    return { __json: text };
                                 });
                             }
                             return res.blob();
                         })
-                        .then(function (blob) {
-                            if (blob) {
-                                log("blob size: " + blob.size + " type: " + blob.type);
-                                var blobUrl = URL.createObjectURL(blob);
-                                log("blob url: " + blobUrl);
-                                video.src = blobUrl;
-                                video.load();
-                                log("video loaded from blob");
+                        .then(function (result) {
+                            if (!result) return;
+                            // JSON 응답인 경우: 영상 URL 추출 시도
+                            if (result.__json) {
+                                log("response is JSON, not video binary");
+                                return;
                             }
+                            log("blob size: " + result.size + " type: " + result.type);
+                            var blobUrl = URL.createObjectURL(result);
+                            video.src = blobUrl;
+                            video.load();
+                            log("video loaded from blob");
                         })
                         .catch(function (err) {
                             log("fetch error: " + err.message);

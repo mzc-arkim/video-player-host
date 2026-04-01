@@ -66,44 +66,41 @@
                         log("video loadedmetadata: " + video.videoWidth + "x" + video.videoHeight + " duration=" + video.duration);
                     });
 
-                    if (authorization) {
-                        var headers = {};
-                        headers["Authorization"] = "Bearer " + authorization;
-                        if (projectId) headers["projectId"] = projectId;
-
-                        var cdn = isUsingCDN(src);
-                        log("fetch mode: " + (cdn ? "CDN" : "S3") + " with auth headers...");
-                        log("headers: " + JSON.stringify(Object.keys(headers)));
-
-                        fetch(src, { headers: headers })
-                            .then(function (res) {
-                                log("fetch status: " + res.status + " " + res.statusText);
-                                log("content-type: " + (res.headers.get("content-type") || "unknown"));
-                                log("content-length: " + (res.headers.get("content-length") || "unknown"));
-                                if (!res.ok) {
-                                    return res.text().then(function (body) {
-                                        log("error body: " + body.substring(0, 200));
-                                        throw new Error("HTTP " + res.status);
-                                    });
-                                }
-                                return res.blob();
-                            })
-                            .then(function (blob) {
-                                if (blob) {
-                                    log("blob size: " + blob.size + " type: " + blob.type);
-                                    video.src = URL.createObjectURL(blob);
-                                    video.load();
-                                    log("video loaded from blob");
-                                }
-                            })
-                            .catch(function (err) {
-                                log("fetch error: " + err.message);
-                            });
-                    } else {
-                        log("direct playback (no auth)");
-                        video.src = src;
-                        video.load();
+                    var cdn = isUsingCDN(src);
+                    var fetchHeaders = {};
+                    if (cdn && authorization) {
+                        fetchHeaders["Authorization"] = "Bearer " + authorization;
+                        if (projectId) fetchHeaders["projectId"] = projectId;
                     }
+
+                    log("fetch mode: " + (cdn ? "CDN (auth)" : "S3 (no auth)"));
+
+                    fetch(src, cdn ? { headers: fetchHeaders } : {})
+                        .then(function (res) {
+                            log("fetch status: " + res.status + " " + res.statusText);
+                            log("content-type: " + (res.headers.get("content-type") || "unknown"));
+                            log("content-length: " + (res.headers.get("content-length") || "unknown"));
+                            if (!res.ok) {
+                                return res.text().then(function (body) {
+                                    log("error body: " + body.substring(0, 200));
+                                    throw new Error("HTTP " + res.status);
+                                });
+                            }
+                            return res.blob();
+                        })
+                        .then(function (blob) {
+                            if (blob) {
+                                log("blob size: " + blob.size + " type: " + blob.type);
+                                var blobUrl = URL.createObjectURL(blob);
+                                log("blob url: " + blobUrl);
+                                video.src = blobUrl;
+                                video.load();
+                                log("video loaded from blob");
+                            }
+                        })
+                        .catch(function (err) {
+                            log("fetch error: " + err.message);
+                        });
                 } else {
                     log("no src provided");
                 }
